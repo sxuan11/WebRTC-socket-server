@@ -17,6 +17,7 @@
   "dependencies": {
     "@fastify/autoload": "^5.0.0",
     "@fastify/cors": "7.0.0",
+    "@fastify/redis": "^5.0.0",
     "@fastify/sensible": "^4.1.0",
     "fastify": "^3.29.0",
     "fastify-cli": "^4.0.0",

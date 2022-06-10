@@ -1,14 +1,34 @@
 module.exports = async function (fastify, opts) {
+  const redis = fastify.redis;
+  const userList = new Map();
+
+  function broadcast() {
+
+  }
+
+  function setUser(userId, nick) {
+    userList.set(userId, { nick })
+  }
+
+  function rmUser(userId) {
+    userList.delete(userId);
+  }
   fastify.io.on('connection', (socket) => {
     console.log('some one join')
     const room = socket.handshake.query.room;
-    const userId = socket.handshake.query.userId;
+    const roomUser = redis.get(room);
+    if(!roomUser) {
+      redis.set(room, userList)
+    }
+    const userId = socket.handshake.query.userId || Math.random();
+    const nick = socket.handshake.query.nick || Math.random();
+    setUser(userId ,nick)
     if (room) {
       socket.join(room);
       socket.to(room).emit('join', userId);
     }
-    socket.on('disconnect', () => {
-      console.log('someone leave')
+    socket.on('disconnect', (socket) => {
+      console.log('someone leave->', socket)
     })
 
     socket.on('speak', (message, callback) => {
