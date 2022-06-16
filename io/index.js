@@ -1,4 +1,4 @@
-const { debounce }  = require('lodash');
+const { debounce } = require('lodash');
 
 
 module.exports = async function (fastify, opts) {
@@ -6,42 +6,24 @@ module.exports = async function (fastify, opts) {
   const IONameSpace = fastify.io.of('/');
   fastify.io.on('connection', async (socket) => {
     const room = socket.handshake.query.room;
-    const roomUser = await redis.get(room);
     let userList;
-    if(roomUser) {
-      userList = new Map(JSON.parse(roomUser))
-    } else {
-      userList = new Map();
-    }
-    function broadcastToNewLogin(id) {
-      for (const [k, v] of userList) {
-        if(Object.prototype.hasOwnProperty.call(v, 'offer')) {
-          IONameSpace.sockets.get(id).emit('offer', v.offer);
-        }
-        if(Object.prototype.hasOwnProperty.call(v, 'candidate')) {
-          for (const vElement of v.candidate) {
-            IONameSpace.sockets.get(id).emit('ICE-candidate', vElement);
-          }
-        }
+    await getUserList()
+
+    async function getUserList() {
+      const roomUser = await redis.get(room);
+      if (roomUser) {
+        userList = new Map(JSON.parse(roomUser))
+      } else {
+        userList = new Map();
       }
     }
 
     function setUser(userId, type, value) {
-      if(userList.get(userId)) {
+      if (userList.get(userId)) {
         userList.set(userId, { ...userList.get(userId), [type]: value })
       } else {
         userList.set(userId, { [type]: value })
       }
-    }
-
-    function setICE(userId, data) {
-      const obj = userList.get(userId)
-      if(obj.candidate) {
-        obj.candidate = [...obj.candidate].concat([data]);
-      } else {
-        obj.candidate = [data]
-      }
-      userList.set(userId, obj);
     }
 
     function rmUser(userId) {
@@ -55,52 +37,80 @@ module.exports = async function (fastify, opts) {
     const debounceSetRedis = debounce(setRedisRoom, 1000)
     const userId = socket.handshake.query.userId || Math.random();
     const nick = socket.handshake.query.nick || Math.random();
-    setUser(userId ,'nick', nick);
-    setUser(userId ,'sockId', socket.id);
+    setUser(userId, 'nick', nick);
+    setUser(userId, 'sockId', socket.id);
     if (room) {
       socket.join(room);
+      await setRedisRoom();
       socket.to(room).emit('join', userId);
-      await debounceSetRedis();
-      broadcastToNewLogin(socket.id)
     }
     socket.on('disconnect', async (socket) => {
-      console.log('someone leave->', socket)
+      await getUserList();
       rmUser(userId);
-      await debounceSetRedis();
+      await setRedisRoom();
     })
 
     socket.on('speak', (message, callback) => {
       socket.to(room).emit('speak', message);
-      console.log(IONameSpace.sockets, 'sockets');
       callback({
         status: "ok"
       })
     })
 
+    // 发送Offer给所有人
     socket.on('offer', async (offer, callback) => {
-      socket.to(room).emit('offer', offer);
-      setUser(userId, 'offer', offer);
-      console.log("=>(index.js:67) offer", offer, userId);
-      await debounceSetRedis();
-      callback({
-        status: "ok"
-      })
+      await getUserList();
+      const user = userList.get(offer.recUserId);
+      if (user) {
+        const io = IONameSpace.sockets.get(user.sockId);
+        if (!io) return;
+        io.emit('offer', offer);
+        callback({
+          status: "ok"
+        })
+      }
     })
 
-    socket.on('answer', (answer, callback) => {
-      socket.to(room).emit('answer', answer);
-      callback({
-        status: "ok"
-      })
+    // 发送Offer给所有人
+    socket.on('oneOffer', async (offer, callback) => {
+      await getUserList();
+      const user = userList.get(offer.loginUserId);
+      if (user) {
+        const io = IONameSpace.sockets.get(user.sockId);
+        if (!io) return;
+        io.emit('oneOffer', offer);
+        callback({
+          status: "ok"
+        })
+      }
+    })
+
+
+    // answer给指定的人
+    socket.on('answer', async (answer, callback) => {
+      await getUserList();
+      const user = userList.get(answer.creatorUserId);
+      if (user) {
+        const io = IONameSpace.sockets.get(user.sockId);
+        if (!io) return;
+        io.emit('answer', answer);
+        callback({
+          status: "ok"
+        })
+      }
     })
 
     socket.on('ICE-candidate', async (data, callback) => {
-      socket.to(room).emit('ICE-candidate', data);
-      setICE(userId, data);
-      await debounceSetRedis();
-      callback({
-        status: "ok"
-      })
+      await getUserList();
+      const user = userList.get(data.recUserId);
+      if (user) {
+        const io = IONameSpace.sockets.get(user.sockId);
+        if (!io) return;
+        io.emit('ICE-candidate', data);
+        callback({
+          status: "ok"
+        })
+      }
     })
   })
 }
