@@ -9,7 +9,8 @@
   "scripts": {
     "test": "tap \"test/**/*.test.js\"",
     "start": "fastify start -p 7070 -l info app.js",
-    "dev": "fastify start -p 7070 -w -l info -P app.js"
+    "dev": "fastify start -p 7070 -w -l info -P app.js --options https",
+    "https-start": "node server.js"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +20,8 @@
     "@fastify/cors": "7.0.0",
     "@fastify/redis": "^5.0.0",
     "@fastify/sensible": "^4.1.0",
+    "close-with-grace": "^1.1.0",
+    "dotenv": "^16.0.1",
     "fastify": "^3.29.0",
     "fastify-cli": "^4.0.0",
     "fastify-cors": "^6.1.0",
